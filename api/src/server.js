@@ -2,54 +2,49 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
+const { Server } = require("socket.io");
+const http = require("http");
 
 const app = express();
-const PORT = 3001;
-const DATA_FILE = path.join(__dirname, "data.json");
-
-app.use(express.json());
-
-const corsOptions = {
-    origin: ['http://localhost:3000'],
-    methods: '*',
-    allowedHeaders: '*',
-    credentials: true
-  };
-  
-  app.use(cors(corsOptions));
-
-app.post("/save", (req, res) => {
-    const { firstName, lastName } = req.body;
-
-    if (!firstName || !lastName) {
-        return res.status(400).json({ message: "Nome e cognome è richiesto" });
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "http://localhost:3000",
+        methods: ["GET", "POST"]
     }
-
-    const newEntry = { firstName, lastName };
-
-    let data = [];
-    if (fs.existsSync(DATA_FILE)) {
-        const fileContent = fs.readFileSync(DATA_FILE, "utf8");
-        if (fileContent) {
-            data = JSON.parse(fileContent);
-        }
-    }
-
-    data.push(newEntry);
-
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-
-    res.json(newEntry);
 });
 
-app.get("/getAll", (req, res) => {
+const PORT = 3001;
+const MESSAGES_FILE = path.join(__dirname, "messages.json");
 
-    const fileContent = fs.readFileSync(DATA_FILE, "utf8");
-    const data = fileContent ? JSON.parse(fileContent) : [];
+app.use(cors());
+app.use(express.json());
 
-    res.json(data);
-})
+const readMessages = () => {
+    if (!fs.existsSync(MESSAGES_FILE)) return [];
+    const fileContent = fs.readFileSync(MESSAGES_FILE, "utf8");
+    return fileContent ? JSON.parse(fileContent) : [];
+};
 
-app.listen(PORT, () => {
+const writeMessages = (data) => {
+    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(data, null, 2));
+};
+
+io.on("conneso", (socket) => {
+    socket.emit("loadMessages", readMessages());
+
+    socket.on("sendMessage", (message) => {
+        const messages = readMessages();
+        const newMessage = { id: socket.id, text: message };
+        messages.push(newMessage);
+        writeMessages(messages);
+
+        io.emit("newMessage", newMessage);
+    });
+
+    socket.on("uscito", () => {});
+});
+
+server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
